@@ -153,3 +153,89 @@ function App() {
 }
 
 export default App;
+
+
+# ---------- Stage 1: Build React App ----------
+FROM node:18-alpine AS build
+
+# Set working directory inside container
+WORKDIR /app
+
+# Copy package files first (for caching)
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy the rest of the app
+COPY . .
+
+# Build the React app for production
+RUN npm run build
+
+# ---------- Stage 2: Serve the App ----------
+FROM nginx:alpine
+
+# Copy build output from previous stage to Nginx HTML folder
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
+
+
+
+pipeline {
+    agent any
+
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Monishapmj/practice.git'
+            }
+        }
+
+        stage('Use Node') {
+            steps {
+                bat '''
+                    node -v
+                    npm -v
+                '''
+            }
+        }
+
+        stage('Install Dependencies') {
+            steps {
+                dir('reactapp') {   // 👈 change this to your actual folder name
+                    bat 'npm install'
+                }
+            }
+        }
+
+        stage('Build Project') {
+            steps {
+                dir('reactapp') {   // 👈 same folder name
+                    bat 'npm run build'
+                }
+            }
+        }
+
+        stage('Archive Build Output') {
+            steps {
+                archiveArtifacts artifacts: 'reactapp/dist/**', fingerprint: true
+            }
+        }
+    }
+
+    post {
+        success {
+            echo '✅ Build Successful'
+        }
+        failure {
+            echo '❌ Build Failed'
+        }
+    }
+}
+
